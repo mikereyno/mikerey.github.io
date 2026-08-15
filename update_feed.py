@@ -9,7 +9,7 @@ import re
 from urllib.parse import urlparse
 
 SITE = "https://houseofheat.co"
-NIKE_PAGE = f"{SITE}/nike"
+NIKE_PAGE = SITE + "/nike"
 FEED_FILE = "nike.xml"
 
 HEADERS = {
@@ -36,44 +36,26 @@ def get_image_type(url):
 
 
 def get_article(url):
-
     try:
         response = session.get(url, timeout=30)
         response.raise_for_status()
 
-        soup = BeautifulSoup(
-            response.text,
-            "html.parser"
-        )
+        soup = BeautifulSoup(response.text, "html.parser")
 
-        # TITLE
         title = None
 
         h1 = soup.find("h1")
-
         if h1:
-            title = h1.get_text(
-                " ",
-                strip=True
-            )
+            title = h1.get_text(" ", strip=True)
 
         if not title:
-            meta = soup.find(
-                "meta",
-                property="og:title"
-            )
-
+            meta = soup.find("meta", property="og:title")
             if meta:
                 title = meta.get("content")
 
-        # IMAGE
         image = None
 
-        meta = soup.find(
-            "meta",
-            property="og:image"
-        )
-
+        meta = soup.find("meta", property="og:image")
         if meta:
             image = meta.get("content")
 
@@ -82,11 +64,9 @@ def get_article(url):
                 "meta",
                 attrs={"name": "twitter:image"}
             )
-
             if meta:
                 image = meta.get("content")
 
-        # DATE
         published = None
 
         meta = soup.find(
@@ -97,57 +77,38 @@ def get_article(url):
         if meta:
             published = meta.get("content")
 
-        # JSON-LD DATE
         if not published:
-
             for script in soup.find_all(
                 "script",
                 type="application/ld+json"
             ):
-
                 try:
-
                     data = json.loads(
-                        script.string
-                        or script.get_text()
+                        script.string or script.get_text()
                     )
 
                     objects = (
-                        data
-                        if isinstance(data, list)
+                        data if isinstance(data, list)
                         else [data]
                     )
 
                     for obj in objects:
-
                         if not isinstance(obj, dict):
                             continue
 
                         if obj.get("datePublished"):
-
-                            published = obj[
-                                "datePublished"
-                            ]
-
+                            published = obj["datePublished"]
                             break
 
                         graph = obj.get("@graph")
 
                         if graph:
-
                             for item in graph:
-
                                 if (
                                     isinstance(item, dict)
-                                    and item.get(
-                                        "datePublished"
-                                    )
+                                    and item.get("datePublished")
                                 ):
-
-                                    published = item[
-                                        "datePublished"
-                                    ]
-
+                                    published = item["datePublished"]
                                     break
 
                         if published:
@@ -156,13 +117,8 @@ def get_article(url):
                 except Exception:
                     pass
 
-        # HOUSE OF HEAT DATE
         if not published:
-
-            text = soup.get_text(
-                " ",
-                strip=True
-            )
+            text = soup.get_text(" ", strip=True)
 
             match = re.search(
                 r"Date:\s*(\d{4})\.(\d{2})\.(\d{2})",
@@ -170,43 +126,30 @@ def get_article(url):
             )
 
             if match:
-
                 published = (
-                    f"{match.group(1)}-"
-                    f"{match.group(2)}-"
-                    f"{match.group(3)}"
-                    "T00:00:00+00:00"
+                    match.group(1)
+                    + "-"
+                    + match.group(2)
+                    + "-"
+                    + match.group(3)
+                    + "T00:00:00+00:00"
                 )
 
-        # CONVERT DATE
         if published:
-
             try:
-
                 date = datetime.fromisoformat(
-                    published.replace(
-                        "Z",
-                        "+00:00"
-                    )
+                    published.replace("Z", "+00:00")
                 )
 
                 if date.tzinfo is None:
-
                     date = date.replace(
                         tzinfo=timezone.utc
                     )
 
             except Exception:
-
-                date = datetime.now(
-                    timezone.utc
-                )
-
+                date = datetime.now(timezone.utc)
         else:
-
-            date = datetime.now(
-                timezone.utc
-            )
+            date = datetime.now(timezone.utc)
 
         if not title:
             return None
@@ -219,17 +162,9 @@ def get_article(url):
         }
 
     except Exception as error:
-
-        print(
-            f"Error reading {url}: {error}"
-        )
-
+        print("Error reading " + url + ": " + str(error))
         return None
 
-
-# ==========================================================
-# FIND NIKE ARTICLES
-# ==========================================================
 
 response = session.get(
     NIKE_PAGE,
@@ -246,22 +181,13 @@ soup = BeautifulSoup(
 urls = []
 seen = set()
 
-for link in soup.find_all(
-    "a",
-    href=True
-):
-
+for link in soup.find_all("a", href=True):
     href = link["href"]
 
-    if (
-        href.startswith("/nike/")
-        and href != "/nike/"
-    ):
-
+    if href.startswith("/nike/") and href != "/nike/":
         url = SITE + href
 
         if url not in seen:
-
             seen.add(url)
             urls.append(url)
 
@@ -269,18 +195,10 @@ for link in soup.find_all(
         break
 
 
-# ==========================================================
-# GET ARTICLE INFORMATION
-# ==========================================================
-
 articles = []
 
 for url in urls:
-
-    print(
-        "Checking:",
-        url
-    )
+    print("Checking: " + url)
 
     article = get_article(url)
 
@@ -288,36 +206,26 @@ for url in urls:
         articles.append(article)
 
 
-# NEWEST FIRST
-
 articles.sort(
     key=lambda x: x["date"],
     reverse=True
 )
 
 
-# ==========================================================
-# CREATE RSS FEED
-# ==========================================================
-
 rss = ET.Element(
     "rss",
     {
         "version": "2.0",
-        "xmlns:media":
-            "http://search.yahoo.com/mrss/"
+        "xmlns:media": "http://search.yahoo.com/mrss/"
     }
 )
 
-channel = ET.SubElement(
-    rss,
-    "channel"
-)
+channel = ET.SubElement(rss, "channel")
 
 ET.SubElement(
     channel,
     "title"
-).text = "House of Heat — Nike"
+).text = "House of Heat - Nike"
 
 ET.SubElement(
     channel,
@@ -327,9 +235,7 @@ ET.SubElement(
 ET.SubElement(
     channel,
     "description"
-).text = (
-    "Latest Nike news from House of Heat"
-)
+).text = "Latest Nike news from House of Heat"
 
 ET.SubElement(
     channel,
@@ -337,16 +243,9 @@ ET.SubElement(
 ).text = "en"
 
 
-# ==========================================================
-# ADD ARTICLES
-# ==========================================================
-
 for article in articles:
 
-    item = ET.SubElement(
-        channel,
-        "item"
-    )
+    item = ET.SubElement(channel, "item")
 
     ET.SubElement(
         item,
@@ -361,31 +260,19 @@ for article in articles:
     ET.SubElement(
         item,
         "guid",
-        {
-            "isPermaLink": "true"
-        }
+        {"isPermaLink": "true"}
     ).text = article["url"]
 
     ET.SubElement(
         item,
         "pubDate"
-    ).text = format_datetime(
-        article["date"]
-    )
-
-    # ------------------------------------------------------
-    # IMAGE INFORMATION
-    # ------------------------------------------------------
+    ).text = format_datetime(article["date"])
 
     if article["image"]:
 
         image_url = article["image"]
+        mime_type = get_image_type(image_url)
 
-        mime_type = get_image_type(
-            image_url
-        )
-
-        # MEDIA CONTENT
         ET.SubElement(
             item,
             "{http://search.yahoo.com/mrss/}content",
@@ -396,7 +283,6 @@ for article in articles:
             }
         )
 
-        # MEDIA THUMBNAIL
         ET.SubElement(
             item,
             "{http://search.yahoo.com/mrss/}thumbnail",
@@ -405,7 +291,6 @@ for article in articles:
             }
         )
 
-        # RSS ENCLOSURE
         ET.SubElement(
             item,
             "enclosure",
@@ -416,18 +301,12 @@ for article in articles:
             }
         )
 
-        # DESCRIPTION WITH IMAGE
         description_html = (
             '<img src="'
-            + html.escape(
-                image_url,
-                quote=True
-            )
+            + html.escape(image_url, quote=True)
             + '" alt="" />'
             + "<br><br>"
-            + html.escape(
-                article["title"]
-            )
+            + html.escape(article["title"])
         )
 
         ET.SubElement(
@@ -436,13 +315,7 @@ for article in articles:
         ).text = description_html
 
 
-# ==========================================================
-# WRITE THE RSS FILE
-# ==========================================================
-
-tree = ET.ElementTree(
-    rss
-)
+tree = ET.ElementTree(rss)
 
 tree.write(
     FEED_FILE,
@@ -451,34 +324,23 @@ tree.write(
 )
 
 
-# ==========================================================
-# CONVERT DESCRIPTION TO CDATA
-# ==========================================================
-
 with open(
     FEED_FILE,
     "r",
     encoding="utf-8"
 ) as file:
-
     xml = file.read()
 
 
 pattern = re.compile(
-    r"<description>"
-    r"(.*?)"
-    r"</description>",
+    r"<description>(.*?)</description>",
     re.DOTALL
 )
 
 
 def make_cdata(match):
-
     content = match.group(1)
-
-    content = html.unescape(
-        content
-    )
+    content = html.unescape(content)
 
     return (
         "<description><![CDATA["
@@ -493,17 +355,16 @@ xml = pattern.sub(
 )
 
 
-# SAVE FINAL RSS
-
 with open(
     FEED_FILE,
     "w",
     encoding="utf-8"
 ) as file:
-
     file.write(xml)
 
 
 print(
-    f"Feed updated with {len(articles)} Nike articles."
+    "Feed updated with "
+    + str(len(articles))
+    + " Nike articles."
 )
