@@ -20,7 +20,7 @@ session = requests.Session()
 session.headers.update(HEADERS)
 
 
-def image_type(url):
+def get_image_type(url):
     path = urlparse(url).path.lower()
 
     if ".png" in path:
@@ -58,7 +58,6 @@ def get_article(url):
             )
 
         if not title:
-
             meta = soup.find(
                 "meta",
                 property="og:title"
@@ -79,7 +78,6 @@ def get_article(url):
             image = meta.get("content")
 
         if not image:
-
             meta = soup.find(
                 "meta",
                 attrs={"name": "twitter:image"}
@@ -99,7 +97,7 @@ def get_article(url):
         if meta:
             published = meta.get("content")
 
-        # JSON-LD
+        # JSON-LD DATE
         if not published:
 
             for script in soup.find_all(
@@ -158,7 +156,7 @@ def get_article(url):
                 except Exception:
                     pass
 
-        # House of Heat visible date
+        # HOUSE OF HEAT DATE
         if not published:
 
             text = soup.get_text(
@@ -180,6 +178,7 @@ def get_article(url):
                     "T00:00:00+00:00"
                 )
 
+        # CONVERT DATE
         if published:
 
             try:
@@ -271,7 +270,7 @@ for link in soup.find_all(
 
 
 # ==========================================================
-# GET ARTICLES
+# GET ARTICLE INFORMATION
 # ==========================================================
 
 articles = []
@@ -289,6 +288,8 @@ for url in urls:
         articles.append(article)
 
 
+# NEWEST FIRST
+
 articles.sort(
     key=lambda x: x["date"],
     reverse=True
@@ -296,7 +297,7 @@ articles.sort(
 
 
 # ==========================================================
-# CREATE RSS
+# CREATE RSS FEED
 # ==========================================================
 
 rss = ET.Element(
@@ -337,7 +338,7 @@ ET.SubElement(
 
 
 # ==========================================================
-# ARTICLES
+# ADD ARTICLES
 # ==========================================================
 
 for article in articles:
@@ -373,14 +374,14 @@ for article in articles:
     )
 
     # ------------------------------------------------------
-    # IMAGES
+    # IMAGE INFORMATION
     # ------------------------------------------------------
 
     if article["image"]:
 
         image_url = article["image"]
 
-        mime = image_type(
+        mime_type = get_image_type(
             image_url
         )
 
@@ -391,7 +392,7 @@ for article in articles:
             {
                 "url": image_url,
                 "medium": "image",
-                "type": mime
+                "type": mime_type
             }
         )
 
@@ -410,13 +411,13 @@ for article in articles:
             "enclosure",
             {
                 "url": image_url,
-                "type": mime,
+                "type": mime_type,
                 "length": "0"
             }
         )
 
-        # DESCRIPTION
-        description = (
+        # DESCRIPTION WITH IMAGE
+        description_html = (
             '<img src="'
             + html.escape(
                 image_url,
@@ -432,11 +433,11 @@ for article in articles:
         ET.SubElement(
             item,
             "description"
-        ).text = description
+        ).text = description_html
 
 
 # ==========================================================
-# SAVE
+# WRITE THE RSS FILE
 # ==========================================================
 
 tree = ET.ElementTree(
@@ -448,6 +449,60 @@ tree.write(
     encoding="utf-8",
     xml_declaration=True
 )
+
+
+# ==========================================================
+# CONVERT DESCRIPTION TO CDATA
+# ==========================================================
+
+with open(
+    FEED_FILE,
+    "r",
+    encoding="utf-8"
+) as file:
+
+    xml = file.read()
+
+
+pattern = re.compile(
+    r"<description>"
+    r"(.*?)"
+    r"</description>",
+    re.DOTALL
+)
+
+
+def make_cdata(match):
+
+    content = match.group(1)
+
+    content = html.unescape(
+        content
+    )
+
+    return (
+        "<description><![CDATA["
+        + content
+        + "]]></description>"
+    )
+
+
+xml = pattern.sub(
+    make_cdata,
+    xml
+)
+
+
+# SAVE FINAL RSS
+
+with open(
+    FEED_FILE,
+    "w",
+    encoding="utf-8"
+) as file:
+
+    file.write(xml)
+
 
 print(
     f"Feed updated with {len(articles)} Nike articles."
