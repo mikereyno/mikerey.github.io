@@ -215,7 +215,43 @@ for article in articles:
                 "url": article["image"],
                 "medium": "image"
             }
-        )
+    # Featured image
+if article["image"]:
+
+    image_url = article["image"]
+
+    # Media RSS
+    ET.SubElement(
+        item,
+        "{http://search.yahoo.com/mrss/}content",
+        {
+            "url": image_url,
+            "medium": "image",
+            "type": "image/jpeg"
+        }
+    )
+
+    # Standard RSS enclosure
+    ET.SubElement(
+        item,
+        "enclosure",
+        {
+            "url": image_url,
+            "type": "image/jpeg",
+            "length": "0"
+        }
+    )
+
+    # Image inside description for readers that look there
+    description = (
+        f'<img src="{image_url}" alt="" />'
+        f'<p>{article["title"]}</p>'
+    )
+
+    ET.SubElement(
+        item,
+        "description"
+    ).text = description
 
 
 # Write feed
