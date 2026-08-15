@@ -6,366 +6,449 @@ import xml.etree.ElementTree as ET
 import json
 import html
 import re
+from urllib.parse import urlparse
 
 SITE = "https://houseofheat.co"
 NIKE_PAGE = f"{SITE}/nike"
 FEED_FILE = "nike.xml"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/139 Safari/537.36"
+    "User-Agent": "Mozilla/5.0"
 }
 
 session = requests.Session()
 session.headers.update(HEADERS)
 
 
-def get_article_details(url):
-    try:
-        response = session.get(url, timeout=30)
-        response.raise_for_status()
+def image_type(url):
+    path = urlparse(url).path.lower()
 
-        soup = BeautifulSoup(response.text, "html.parser")
+    if ".png" in path:
+        return "image/png"
 
-        # -----------------------------
-        # TITLE
-        # -----------------------------
+    if ".webp" in path:
+        return "image/webp"
 
-        title = None
+    if ".gif" in path:
+        return "image/gif"
 
-        h1 = soup.find("h1")
-        if h1:
-            title = h1.get_text(" ", strip=True)
-
-        if not title:
-            meta = soup.find("meta", property="og:title")
-            if meta:
-                title = meta.get("content")
-
-        # -----------------------------
-        # FEATURED IMAGE
-        # -----------------------------
-
-        image = None
-
-        meta = soup.find("meta", property="og:image")
-        if meta:
-            image = meta.get("content")
-
-        if not image:
-            meta = soup.find("meta", attrs={"name": "twitter:image"})
-            if meta:
-                image = meta.get("content")
-
-        # -----------------------------
-        # PUBLICATION DATE
-        # -----------------------------
-
-        published = None
-
-        # OpenGraph date
-        meta = soup.find("meta", property="article:published_time")
-        if meta:
-            published = meta.get("content")
-
-        # JSON-LD date
-        if not published:
-            for script in soup.find_all(
-                "script",
-                type="application/ld+json"
-            ):
-                try:
-                    data = json.loads(
-                        script.string or script.get_text()
-                    )
-
-                    objects = data if isinstance(data, list) else [data]
-
-                    for obj in objects:
-
-                        if not isinstance(obj, dict):
-                            continue
-
-                        if obj.get("datePublished"):
-                            published = obj["datePublished"]
-                            break
-
-                        graph = obj.get("@graph")
-
-                        if graph:
-                            for item in graph:
-                                if (
-                                    isinstance(item, dict)
-                                    and item.get("datePublished")
-                                ):
-                                    published = item["datePublished"]
-                                    break
-
-                        if published:
-                            break
-
-                except Exception:
-                    pass
-
-        # Visible House of Heat date
-        if not published:
-
-            text = soup.get_text(" ", strip=True)
-
-            match = re.search(
-                r"Date:\s*(\d{4})\.(\d{2})\.(\d{2})",
-                text
-            )
-
-            if match:
-                published = (
-                    f"{match.group(1)}-"
-                    f"{match.group(2)}-"
-                    f"{match.group(3)}T00:00:00+00:00"
-                )
-
-        # Final fallback
-        if not published:
-            date = datetime.now(timezone.utc)
-
-        else:
-            try:
-                date = datetime.fromisoformat(
-                    published.replace("Z", "+00:00")
-                )
-
-                if date.tzinfo is None:
-                    date = date.replace(
-                        tzinfo=timezone.utc
-                    )
-
-            except Exception:
-                date = datetime.now(timezone.utc)
-
-        if not title:
-            return None
-
-        return {
-            "title": title,
-            "url": url,
-            "image": image,
-            "date": date
-        }
-
-    except Exception as error:
-
-        print(
-            f"Could not read {url}: {error}"
-        )
-
-        return None
+    return "image/jpeg"
 
 
-# =========================================================
+def get_article(url):
+
+    try:
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(
+            response.text,
+            "html.parser"
+        )
+
+        # TITLE
+        title = None
+
+        h1 = soup.find("h1")
+
+        if h1:
+            title = h1.get_text(
+                " ",
+                strip=True
+            )
+
+        if not title:
+
+            meta = soup.find(
+                "meta",
+                property="og:title"
+            )
+
+            if meta:
+                title = meta.get("content")
+
+        # IMAGE
+        image = None
+
+        meta = soup.find(
+            "meta",
+            property="og:image"
+        )
+
+        if meta:
+            image = meta.get("content")
+
+        if not image:
+
+            meta = soup.find(
+                "meta",
+                attrs={"name": "twitter:image"}
+            )
+
+            if meta:
+                image = meta.get("content")
+
+        # DATE
+        published = None
+
+        meta = soup.find(
+            "meta",
+            property="article:published_time"
+        )
+
+        if meta:
+            published = meta.get("content")
+
+        # JSON-LD
+        if not published:
+
+            for script in soup.find_all(
+                "script",
+                type="application/ld+json"
+            ):
+
+                try:
+
+                    data = json.loads(
+                        script.string
+                        or script.get_text()
+                    )
+
+                    objects = (
+                        data
+                        if isinstance(data, list)
+                        else [data]
+                    )
+
+                    for obj in objects:
+
+                        if not isinstance(obj, dict):
+                            continue
+
+                        if obj.get("datePublished"):
+
+                            published = obj[
+                                "datePublished"
+                            ]
+
+                            break
+
+                        graph = obj.get("@graph")
+
+                        if graph:
+
+                            for item in graph:
+
+                                if (
+                                    isinstance(item, dict)
+                                    and item.get(
+                                        "datePublished"
+                                    )
+                                ):
+
+                                    published = item[
+                                        "datePublished"
+                                    ]
+
+                                    break
+
+                        if published:
+                            break
+
+                except Exception:
+                    pass
+
+        # House of Heat visible date
+        if not published:
+
+            text = soup.get_text(
+                " ",
+                strip=True
+            )
+
+            match = re.search(
+                r"Date:\s*(\d{4})\.(\d{2})\.(\d{2})",
+                text
+            )
+
+            if match:
+
+                published = (
+                    f"{match.group(1)}-"
+                    f"{match.group(2)}-"
+                    f"{match.group(3)}"
+                    "T00:00:00+00:00"
+                )
+
+        if published:
+
+            try:
+
+                date = datetime.fromisoformat(
+                    published.replace(
+                        "Z",
+                        "+00:00"
+                    )
+                )
+
+                if date.tzinfo is None:
+
+                    date = date.replace(
+                        tzinfo=timezone.utc
+                    )
+
+            except Exception:
+
+                date = datetime.now(
+                    timezone.utc
+                )
+
+        else:
+
+            date = datetime.now(
+                timezone.utc
+            )
+
+        if not title:
+            return None
+
+        return {
+            "title": title,
+            "url": url,
+            "image": image,
+            "date": date
+        }
+
+    except Exception as error:
+
+        print(
+            f"Error reading {url}: {error}"
+        )
+
+        return None
+
+
+# ==========================================================
 # FIND NIKE ARTICLES
-# =========================================================
+# ==========================================================
 
 response = session.get(
-    NIKE_PAGE,
-    timeout=30
+    NIKE_PAGE,
+    timeout=30
 )
 
 response.raise_for_status()
 
 soup = BeautifulSoup(
-    response.text,
-    "html.parser"
+    response.text,
+    "html.parser"
 )
 
 urls = []
 seen = set()
 
 for link in soup.find_all(
-    "a",
-    href=True
+    "a",
+    href=True
 ):
 
-    href = link["href"]
+    href = link["href"]
 
-    if (
-        href.startswith("/nike/")
-        and href != "/nike/"
-    ):
+    if (
+        href.startswith("/nike/")
+        and href != "/nike/"
+    ):
 
-        url = SITE + href
+        url = SITE + href
 
-        if url not in seen:
+        if url not in seen:
 
-            seen.add(url)
-            urls.append(url)
+            seen.add(url)
+            urls.append(url)
 
-    if len(urls) >= 30:
-        break
+    if len(urls) >= 30:
+        break
 
 
-# =========================================================
-# GET ARTICLE INFORMATION
-# =========================================================
+# ==========================================================
+# GET ARTICLES
+# ==========================================================
 
 articles = []
 
 for url in urls:
 
-    print(
-        f"Checking {url}"
-    )
+    print(
+        "Checking:",
+        url
+    )
 
-    article = get_article_details(url)
+    article = get_article(url)
 
-    if article:
+    if article:
+        articles.append(article)
 
-        articles.append(article)
 
-
-# Newest first
 articles.sort(
-    key=lambda article: article["date"],
-    reverse=True
+    key=lambda x: x["date"],
+    reverse=True
 )
 
 
-# =========================================================
-# CREATE RSS FEED
-# =========================================================
+# ==========================================================
+# CREATE RSS
+# ==========================================================
 
 rss = ET.Element(
-    "rss",
-    {
-        "version": "2.0",
-        "xmlns:media": "http://search.yahoo.com/mrss/"
-    }
+    "rss",
+    {
+        "version": "2.0",
+        "xmlns:media":
+            "http://search.yahoo.com/mrss/"
+    }
 )
 
 channel = ET.SubElement(
-    rss,
-    "channel"
+    rss,
+    "channel"
 )
 
 ET.SubElement(
-    channel,
-    "title"
+    channel,
+    "title"
 ).text = "House of Heat — Nike"
 
 ET.SubElement(
-    channel,
-    "link"
+    channel,
+    "link"
 ).text = NIKE_PAGE
 
 ET.SubElement(
-    channel,
-    "description"
-).text = "Latest Nike news from House of Heat"
+    channel,
+    "description"
+).text = (
+    "Latest Nike news from House of Heat"
+)
 
 ET.SubElement(
-    channel,
-    "language"
+    channel,
+    "language"
 ).text = "en"
 
 
-# =========================================================
-# ADD ARTICLES
-# =========================================================
+# ==========================================================
+# ARTICLES
+# ==========================================================
 
 for article in articles:
 
-    item = ET.SubElement(
-        channel,
-        "item"
-    )
+    item = ET.SubElement(
+        channel,
+        "item"
+    )
 
-    ET.SubElement(
-        item,
-        "title"
-    ).text = article["title"]
+    ET.SubElement(
+        item,
+        "title"
+    ).text = article["title"]
 
-    ET.SubElement(
-        item,
-        "link"
-    ).text = article["url"]
+    ET.SubElement(
+        item,
+        "link"
+    ).text = article["url"]
 
-    ET.SubElement(
-        item,
-        "guid",
-        {
-            "isPermaLink": "true"
-        }
-    ).text = article["url"]
+    ET.SubElement(
+        item,
+        "guid",
+        {
+            "isPermaLink": "true"
+        }
+    ).text = article["url"]
 
-    ET.SubElement(
-        item,
-        "pubDate"
-    ).text = format_datetime(
-        article["date"]
-    )
+    ET.SubElement(
+        item,
+        "pubDate"
+    ).text = format_datetime(
+        article["date"]
+    )
 
-    # -----------------------------------------------------
-    # IMAGE
-    # -----------------------------------------------------
+    # ------------------------------------------------------
+    # IMAGES
+    # ------------------------------------------------------
 
-    if article["image"]:
+    if article["image"]:
 
-        image_url = article["image"]
+        image_url = article["image"]
 
-        # Media RSS
-        ET.SubElement(
-            item,
-            "{http://search.yahoo.com/mrss/}content",
-            {
-                "url": image_url,
-                "medium": "image"
-            }
-        )
+        mime = image_type(
+            image_url
+        )
 
-        # Standard RSS enclosure
-        ET.SubElement(
-            item,
-            "enclosure",
-            {
-                "url": image_url,
-                "type": "image/jpeg",
-                "length": "0"
-            }
-        )
+        # MEDIA CONTENT
+        ET.SubElement(
+            item,
+            "{http://search.yahoo.com/mrss/}content",
+            {
+                "url": image_url,
+                "medium": "image",
+                "type": mime
+            }
+        )
 
-        # Image in description
-        image_html = (
-            '<img src="'
-            + html.escape(image_url, quote=True)
-            + '" />'
-        )
+        # MEDIA THUMBNAIL
+        ET.SubElement(
+            item,
+            "{http://search.yahoo.com/mrss/}thumbnail",
+            {
+                "url": image_url
+            }
+        )
 
-        description_html = (
-            image_html
-            + "<br><br>"
-            + html.escape(article["title"])
-        )
+        # RSS ENCLOSURE
+        ET.SubElement(
+            item,
+            "enclosure",
+            {
+                "url": image_url,
+                "type": mime,
+                "length": "0"
+            }
+        )
 
-        description = ET.SubElement(
-            item,
-            "description"
-        )
+        # DESCRIPTION
+        description = (
+            '<img src="'
+            + html.escape(
+                image_url,
+                quote=True
+            )
+            + '" alt="" />'
+            + "<br><br>"
+            + html.escape(
+                article["title"]
+            )
+        )
 
-        description.text = description_html
+        ET.SubElement(
+            item,
+            "description"
+        ).text = description
 
 
-# =========================================================
-# SAVE FEED
-# =========================================================
+# ==========================================================
+# SAVE
+# ==========================================================
 
 tree = ET.ElementTree(
-    rss
+    rss
 )
 
 tree.write(
-    FEED_FILE,
-    encoding="utf-8",
-    xml_declaration=True
+    FEED_FILE,
+    encoding="utf-8",
+    xml_declaration=True
 )
 
 print(
-    f"RSS feed updated with {len(articles)} Nike articles."
+    f"Feed updated with {len(articles)} Nike articles."
 )
