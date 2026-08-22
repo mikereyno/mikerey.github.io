@@ -11,7 +11,7 @@ from urllib.parse import urljoin
 
 SITE = "https://www.soleretriever.com"
 NIKE_PAGE = f"{SITE}/news/tags/nike"
-FEED_FILE = "sole-retriever-nike.xml"
+FEED_FILE = "sole-retriever-nike-v2.xml"
 
 HEADERS = {
    "User-Agent": (
